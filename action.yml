@@ -1,0 +1,69 @@
+name: Changelog
+description: Generates a changelog for a WordPress plugin
+author: johnbillion
+branding:
+  icon: check-circle
+  color: green
+name: Populate changelog
+
+inputs:
+  token:
+    description: GitHub token
+    required: true
+    type: string
+outputs:
+  changelog:
+    description: The changelog content
+    type: string
+    value: ${{ steps.changelog.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - name: Populate Changelog
+      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+      id: changelog
+      env:
+        TOKEN: ${{ inputs.token }}
+      with:
+        result-encoding: string
+        retries: 2
+        script: | #js
+          const fs = require('fs');
+          const { data: releases } = await github.rest.repos.listReleases( context.repo );
+
+          let published = releases.filter( release =>
+            ! release.draft && ! release.prerelease
+          );
+
+          let sorted = published.sort( ( a, b ) =>
+            new Date( b.published_at ) - new Date( a.published_at )
+          );
+
+          let changelog = sorted.map( ( release ) => {
+            const date = new Date( release.published_at ).toLocaleDateString(
+              'en-gb',
+              {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              }
+            );
+
+            return [
+              `### ${release.tag_name} (${date}) ###`,
+              '',
+              `${release.body}`,
+            ].join('\n');
+          } );
+
+          // Show a maximum of 10 releases
+          changelog = changelog.slice( 0, 10 );
+
+          changelog.push(
+            '### Earlier versions ###',
+            `For the changelog of earlier versions, <a href="https://github.com/${context.repo.owner}/${context.repo.repo}/releases">refer to the releases page on GitHub</a>.`,
+          );
+          changelog.unshift('## Changelog ##');
+
+          return changelog.join( '\n\n' );
